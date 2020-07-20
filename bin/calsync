@@ -1,0 +1,24 @@
+#!/bin/sh
+
+ICAL2ORG="$HOME/bin/ical2org"
+ICAL2ORG_DNL="https://orgmode.org/worg/code/awk/ical2org.awk"
+if [ ! -x "$ICAL2ORG" ]; then
+    mkdir -p "$(dirname "$ICAL2ORG")"
+    wget -O "$ICAL2ORG" "$ICAL2ORG_DNL" 2>/dev/null
+    chmod +x "$ICAL2ORG"
+fi
+
+
+url="$1"
+shift
+dst="$1"
+shift
+
+# src1="$(pass ical/perso)"
+# dst1="$HOME/Documents/Personal Calendar.org"
+# src2="$(pass ical/cosmotech)"
+# dst2="$HOME/Documents/Cosmo Tech Calendar.org"
+
+wget -O - "$url" 2>/dev/null | "$ICAL2ORG" > "$dst" 2>/dev/null
+
+
