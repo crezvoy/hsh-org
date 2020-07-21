@@ -42,7 +42,7 @@ case "$HSH_ACTION" in
 	    gsettings set \
 		      "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$path" \
 		      command \
-		      "emacsclient -e \"(setup-capture-frame)\""
+		      "emacsclient -e \"(my/setup-capture-frame)\""
 
 	    gsettings set \
 		      "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$path" \
