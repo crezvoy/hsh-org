@@ -25,7 +25,7 @@ case "$HSH_ACTION" in
 		    comma=""
 		fi
 		new_a="$(echo $a | sed 's/]$//g' )"
-		new_a="$new_a$comma "
+		new_a="$new_a$comma"
 	    fi
 	    new_a="$new_a '$path' ]"
 
