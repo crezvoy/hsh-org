@@ -650,9 +650,7 @@
                 (tags-todo "-MAYBE/PIN"
                            ((org-agenda-overriding-header "Current picks")
                             (org-agenda-prefix-format "%i %s")
-                            (org-agenda-skip-function 'my/skip-not-current-filter)
-                            (org-super-agenda-groups
-                              '((:auto-category t)))))
+                            (org-agenda-skip-function 'my/skip-not-current-filter)))
                 (tags-todo "-MAYBE/NEXT"
                            ((org-agenda-overriding-header (concat "Today candidates (" (string-remove-prefix "f_"  my/current-filter) ")"))
                             (org-agenda-prefix-format "%i %s")
@@ -680,9 +678,7 @@
                          (org-agenda-include-deadlines nil)))
                 (tags-todo "-MAYBE/PIN"
                            ((org-agenda-overriding-header "Picked for today")
-                            (org-agenda-prefix-format "%i %s")
-                            (org-super-agenda-groups
-                             '((:auto-category t)))))
+                            (org-agenda-prefix-format "%i %s")))
                 (tags-todo "TODO={^.*$}"
                            ((org-agenda-overriding-header "Fast track")
                             (org-agenda-prefix-format "%i %s")
@@ -705,11 +701,16 @@
                ((tags my/current-people
                       ((org-agenda-overriding-header (my/pretty-people my/current-people))
                        (org-super-agenda-groups
-                        '((:name (concat "delegated to " (my/pretty-people my/current-people))
+                        '((:name "Delegated"
                            :and (:tag "WAIT"
                                  :not (:todo ("DONE" "ABRT"))))
-                          (:name (concat "discuss with " (my/pretty-people my/current-people))
-                           :category "discuss")))
+                          (:name "Discuss"
+                           :and (:category ("discuss" "phonecall" "mail")
+                                 :not (:todo ("DONE" "ABRT"))))
+                          (:name "Todo"
+                           :todo ("TODO" "NEXT" "PIN"))
+                          (:name "Finished tasks"
+                           :todo ("DONE" "ABRT"))))
                        (org-agenda-prefix-format "%i %s"))))))
 
 (map!
