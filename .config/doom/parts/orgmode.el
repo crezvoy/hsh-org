@@ -40,8 +40,6 @@
                           (> lvl 1)
                           (not parent-todo))
                 (progn
-                  (message (file-name-base))
-                  (message (buffer-substring (line-beginning-position) (line-end-position)))
                   (outline-up-heading 1)
                   (setq parent-todo (org-get-todo-state)
                         lvl (org-current-level))))))
@@ -396,6 +394,26 @@
 (my/def-filter "work")
 (my/def-filter "home")
 
+(defun my/toggle-filter()
+  (interactive)
+  (let* ((filter (ivy-completing-read "filter: " my/filters)))
+    (org-toggle-tag filter)))
+
+(map!
+ :localleader
+ :map org-mode-map
+ :desc "Filter"
+ "!" 'my/toggle-filter)
+
+(map!
+ :localleader
+ :map org-agenda-mode-map
+ :desc "Filter"
+ "!" '(lambda ()
+        (interactive)
+        (my/agenda-do 'my/toggle-filter)))
+
+
 (setq my/current-filter (car my/filters))
 
 (defun my/cycle-filters ()
@@ -415,13 +433,11 @@
 (map!
  :leader
  :desc "Set filter"
- "n#" #'my/cycle-filters)
+ "n!" #'my/cycle-filters)
 
 
 ;; Categories
-(use-package! emojify
-  :ensure t
-  :config
+(after! emojify
   (add-hook 'after-init-hook #'global-emojify-mode))
 
 
@@ -491,9 +507,6 @@
       (let ((default-directory defdir))
         (funcall action)))))
 
-(use-package! shell-here
-  :ensure t)
-
 (defun my/term-in-workspace ()
   (interactive)
   (my/open-or-create-workspace #'(lambda () (shell-here))))
@@ -529,7 +542,6 @@
 ;; Agendas
 
 (use-package! org-super-agenda
-  :ensure t
   :config
   (org-super-agenda-mode)
   (setq org-super-agenda-header-map nil))
@@ -585,57 +597,33 @@
 
 (add-to-list 'org-agenda-custom-commands
              `("g2" "GTD: clarify"
-               ((tags "+CATEGORY={^inbox$}+TODO={^$}"
-                      ((org-agenda-overriding-header "What is it: TODO (SPC m 1)? or entry to be categorized (SPC m C)")
-                       (org-agenda-prefix-format "%s")
-                       (org-agenda-skip-function 'my/skip-categorized)
-                       (org-agenda-files '(,(concat org-directory "inbox.org")
-                                           ,(concat org-directory "inbox-phone.org")))))
-                (tags "-CATEGORY={^inbox$}-CATEGORY={PERSPECTIVE}-CATEGORY={IDEA}+TODO={^$}+LEVEL=1"
-                      ((org-agenda-overriding-header "Actionable (SPC m 2)?")
-                       (org-agenda-prefix-format "%i %s")
-                       (org-agenda-skip-function 'my/skip-actionned)
-                       (org-agenda-files '(,(concat org-directory "inbox.org")
-                                           ,(concat org-directory "inbox-phone.org")))))
-                (tags-todo "+TODO={^TODO$}"
-                           ((org-agenda-overriding-header "What is the next step? had action sub-headline (SPC m S)")
-                            (org-agenda-prefix-format "%i %s")
-                            (org-agenda-skip-function 'my/skip-has-next)
-                            (org-agenda-files '(,(concat org-directory "inbox.org")
-                                                ,(concat org-directory "inbox-phone.org")))))
-                (tags-todo "+TODO={^NEXT$}-CATEGORY={^[@].*}"
-                          ((org-agenda-overriding-header "Delegate (SPC m C + wait), do myself later (SPC m C mine) ? ")
-                           (org-agenda-prefix-format "%i %s")
-                           (org-agenda-files '(,(concat org-directory "inbox.org")
-                                               ,(concat org-directory "inbox-phone.org")))))
-                (tags-todo "+LEVEL=1+TODO={^$}+CATEGORY={[A-Z_]+}-CATEGORY=PERSPECTIVE|LEVEL=2+TODO={^$}+CATEGORY={[A-Z_]+}-CATEGORY=PERSPECTIVE|CATEGORY={RSS}+TODO={^$}+LEVEL=2"
-                           ((org-agenda-overriding-header "Worth keeping (C-k to delete) ?")
-                            (org-agenda-skip-function 'my/skip-has-next)
-                            (org-agenda-files '(,(concat org-directory "inbox.org")
-                                                ,(concat org-directory "inbox-phone.org"))))))))
-
-(map!
- :leader
- :desc "GTD: Clarify"
- "n1" #'(lambda () (interactive) (org-agenda nil "g2")))
-
-(add-to-list 'org-agenda-custom-commands
-             `("g3" "GTD: Organize"
-               ((tags-todo "+CATEGORY={^$}+TODO={NEXT}"
-                           ((org-agenda-overriding-header "Add a kind: SPC m C")
-                            (org-agenda-prefix-format "%i %s")
-                            (org-agenda-files '(,(concat org-directory "inbox.org")
-                                                ,(concat org-directory "inbox-phone.org")))))
-                (tags "CATEGORY={.*}+LEVEL=1"
-                      ((org-agenda-overriding-header "Move to an existing project or a perpective: SPC m r")
+               ((tags "+TAGS={^.*$}"
+                      ((org-agenda-overriding-header "Clarify/Organize")
+                       (org-super-agenda-groups
+                        '((:name "todo (SPC m 1) or Categorize (SPC m C)"
+                           :and (:todo nil
+                                 :not (:regexp "CATEGORY:")))
+                          (:name "Add next step (SPC m S)"
+                           :and (:todo "TODO"
+                                 :not (:children "NEXT")))
+                          (:name "Add a kind (SPC m C)"
+                           :not (:regexp "CATEGORY:"))
+                          (:name "Add a filter (SPC m !)"
+                           :and (:todo "NEXT"
+                                 :not (:regexp ":f_.*")))
+                          (:name "Delegate (SPC m @)"
+                           :and (:todo "NEXT"
+                                 :not (:regexp ":@.")))
+                          (:name "Move to an existing project (SPC m r), delete (dd)"
+                           :regexp "^\* ")))
                        (org-agenda-prefix-format "%i %s")
                        (org-agenda-files '(,(concat org-directory "inbox.org")
                                            ,(concat org-directory "inbox-phone.org"))))))))
 
 (map!
  :leader
- :desc "GTD: Organize"
- "n2" #'(lambda () (interactive) (org-agenda nil "g3")))
+ :desc "GTD: Clarify"
+ "n1" #'(lambda () (interactive) (org-agenda nil "g2")))
 
 (add-to-list 'org-agenda-custom-commands
              `("g4" "GTD: Plan the day"
@@ -651,7 +639,7 @@
                            ((org-agenda-overriding-header "Current picks")
                             (org-agenda-prefix-format "%i %s")
                             (org-agenda-skip-function 'my/skip-not-current-filter)))
-                (tags-todo "-MAYBE/NEXT"
+                (tags-todo "-MAYBE+SCHEDULED={^$}/NEXT"
                            ((org-agenda-overriding-header (concat "Today candidates (" (string-remove-prefix "f_"  my/current-filter) ")"))
                             (org-agenda-prefix-format "%i %s")
                             (org-agenda-skip-function 'my/skip-not-current-filter)
@@ -684,7 +672,7 @@
                             (org-agenda-prefix-format "%i %s")
                             (org-agenda-files '(,(concat org-directory "inbox.org")
                                                 ,(concat org-directory "inbox-phone.org")))))
-                (tags-todo "-MAYBE/NEXT"
+                (tags-todo "-MAYBE+SCHEDULED={^$}/NEXT"
                            ((org-agenda-overriding-header (concat "Current Context (" (string-remove-prefix "f_" my/current-filter) ")"))
                             (org-agenda-prefix-format "%i %s")
                             (org-agenda-skip-function 'my/skip-not-current-filter)
@@ -722,14 +710,15 @@
 (add-to-list 'org-agenda-custom-commands
              `("g6" "GTD: Project Grooming"
                ;; Goals
-               ((tags-todo "-{^f_.*$}"
-                 ((org-agenda-overriding-header "entries without filter")))
-                (tags-todo "+TODO={.*}"
+               ((tags-todo "+TODO={.*}"
                  ((org-agenda-overriding-header "task policing")
                   (org-super-agenda-groups
-                   '((:name "tasks without context"
+                   '((:name "Tasks outside of filters"
+                      :and (:todo "NEXT"
+                            :not (:regexp ":f_.*")))
+                     (:name "Tasks without context"
                         :and (:todo "NEXT"
-                              :category nil))
+                              :not (:regexp "CATEGORY:")))
                      (:name "Waiting tasks without assignee"
                         :and (:tag "WAIT"
                               :not (:regexp ":@.*")))
