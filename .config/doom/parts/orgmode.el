@@ -15,6 +15,7 @@
         (goto-char pos)
         (org-show-context 'agenda)
         (call-interactively x)
+        (org-save-all-org-buffers)
         (when (get-buffer "*Org Agenda*")
           (with-current-buffer "*Org Agenda*"
             (org-agenda-redo-all)))))))
@@ -326,31 +327,13 @@
  :desc "Delegate"
  "D" 'my/toggle-delegate)
 
-(defun my/agenda-toggle-delegate ()
-  (interactive)
-  (org-agenda-check-no-diary)
-  (let* ((completion-ignore-case t)
-         (hdmarker (or (org-get-at-bol 'org-hd-marker)
-                       (org-agenda-error)))
-         (buffer (marker-buffer hdmarker))
-         (pos (marker-position hdmarker))
-         (inhibit-read-only t)
-         newhead)
-    (org-with-remote-undo buffer
-      (with-current-buffer buffer
-        (widen)
-        (goto-char pos)
-        (org-show-context 'agenda)
-        (call-interactively 'my/toggle-delegate)
-        (when (get-buffer "*Org Agenda*")
-          (with-current-buffer "*Org Agenda*"
-            (org-agenda-redo-all)))))))
-
 (map!
  :localleader
  :map org-agenda-mode-map
  :desc "Delegate"
- "D" 'my/agenda-toggle-delegate)
+ "D" '(lambda ()
+        (interactive)
+        (my/agenda-do 'my/toggle-delegate)))
 
 (defun my/toggle-people ()
   (interactive)
@@ -459,32 +442,13 @@
  :desc "Set kind or category"
  "C" 'my/set-kind-or-category)
 
-(defun my/agenda-set-kind-or-category ()
-  "Set the category for the current headline."
-  (interactive)
-  (org-agenda-check-no-diary)
-  (let* ((completion-ignore-case t)
-         (hdmarker (or (org-get-at-bol 'org-hd-marker)
-                       (org-agenda-error)))
-         (buffer (marker-buffer hdmarker))
-         (pos (marker-position hdmarker))
-         (inhibit-read-only t)
-         newhead)
-    (org-with-remote-undo buffer
-      (with-current-buffer buffer
-        (widen)
-        (goto-char pos)
-        (org-show-context 'agenda)
-        (call-interactively 'my/set-kind-or-category)
-        (when (get-buffer "*Org Agenda*")
-          (with-current-buffer "*Org Agenda*"
-            (org-agenda-redo-all)))))))
-
 (map!
  :localleader
  :map org-agenda-mode-map
  :desc "Set kind or category"
- "C" 'my/agenda-set-kind-or-category)
+ "C" '(lambda ()
+        (interactive)
+        (my/agenda-do 'my/set-kind-or-category)))
 
 ;; Workspaces
 (defun my/open-or-create-workspace (action)
@@ -603,17 +567,22 @@
                         '((:name "todo (SPC m 1) or Categorize (SPC m C)"
                            :and (:todo nil
                                  :not (:regexp "CATEGORY:")))
-                          (:name "Add next step (SPC m S)"
+                          (:name "Add next step (SPC m S) or MAYBE (SPC m q)"
                            :and (:todo "TODO"
-                                 :not (:children "NEXT")))
+                                 :not (:children "NEXT")
+                                 :not (:tag "MAYBE")))
                           (:name "Add a kind (SPC m C)"
-                           :not (:regexp "CATEGORY:"))
+                           :and (:not (:regexp "CATEGORY:")
+                                 :todo "NEXT"
+                                 :not (:tag "MAYBE")))
                           (:name "Add a filter (SPC m !)"
                            :and (:todo "NEXT"
-                                 :not (:regexp ":f_.*")))
+                                 :not (:regexp ":f_.*")
+                                 :not (:tag "MAYBE")))
                           (:name "Delegate (SPC m @)"
                            :and (:todo "NEXT"
-                                 :not (:regexp ":@.")))
+                                 :not (:regexp ":@.")
+                                 :not (:tag "MAYBE")))
                           (:name "Move to an existing project (SPC m r), delete (dd)"
                            :regexp "^\* ")))
                        (org-agenda-prefix-format "%i %s")
