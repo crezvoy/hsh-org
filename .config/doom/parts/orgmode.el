@@ -1,3 +1,5 @@
+(setq org-caldav-calendars (list)
+      plstore-cache-passphrase-for-symmetric-encryption t)
 
 (defun my/agenda-do (x)
   (interactive)
@@ -15,10 +17,10 @@
         (goto-char pos)
         (org-show-context 'agenda)
         (call-interactively x)
-        (org-save-all-org-buffers)
-        (when (get-buffer "*Org Agenda*")
-          (with-current-buffer "*Org Agenda*"
-            (org-agenda-redo-all)))))))
+        (org-save-all-org-buffers)))
+    (when (get-buffer "*Org Agenda*")
+      (with-current-buffer "*Org Agenda*"
+        (org-agenda-redo-all)))))
 
 (defun my/is-refile-target-p ()
   (let ((cat (org-entry-get (point) "CATEGORY" nil))
@@ -314,12 +316,12 @@
          (delegated-to (seq-filter (lambda (x) x) (org-get-tags nil t))))
     (if is-delegated
         (progn
-          (org-toggle-tag "WAIT" off)
-          (map nil (lambda (x) (org-toggle-tag x off)) delegated-to))
+          (org-toggle-tag "WAIT" 'off)
+          (map nil (lambda (x) (org-toggle-tag x 'off)) delegated-to))
       (let* ((delegate-to (ivy-completing-read "delegate to: " my/people)))
         (progn
-          (org-toggle-tag "WAIT" on)
-          (org-toggle-tag delegated-to on))))))
+          (org-toggle-tag "WAIT" 'on)
+          (org-toggle-tag delegate-to 'on))))))
 
 (map!
  :localleader
@@ -372,11 +374,6 @@
 (defun my/def-filter (f)
   (add-to-list 'my/filters (concat "f_" f)))
 
-(my/def-filter "shop")
-(my/def-filter "grocery")
-(my/def-filter "work")
-(my/def-filter "home")
-
 (defun my/toggle-filter()
   (interactive)
   (let* ((filter (ivy-completing-read "filter: " my/filters)))
@@ -397,11 +394,11 @@
         (my/agenda-do 'my/toggle-filter)))
 
 
-(setq my/current-filter (car my/filters))
+(setq my/current-filter nil)
 
 (defun my/cycle-filters ()
   (interactive)
-  (setq my/current-filter (my/next-in-list my/current-filter my/filters))
+  (setq my/current-filter (if my/current-filter (my/next-in-list my/current-filter my/filters) (car my/filters)))
   (message (concat "Curent filter set to " my/current-filter))
   (when (get-buffer "*Org Agenda*")
     (with-current-buffer "*Org Agenda*"
@@ -471,9 +468,27 @@
       (let ((default-directory defdir))
         (funcall action)))))
 
+(defun eshell-here ()
+  "Opens up a new shell in the directory associated with the
+current buffer's file. The eshell is renamed to match that
+directory to make multiple eshell windows easier."
+  (interactive)
+  (let* ((parent (if (buffer-file-name)
+                     (file-name-directory (buffer-file-name))
+                   default-directory))
+         (height (/ (window-total-height) 3))
+         (name   (car (last (split-string parent "/" t)))))
+    (split-window-vertically (- height))
+    (other-window 1)
+    (eshell "new")
+    (rename-buffer (concat "*eshell: " name "*"))
+
+    (insert (concat "ls"))
+    (eshell-send-input)))
+
 (defun my/term-in-workspace ()
   (interactive)
-  (my/open-or-create-workspace #'(lambda () (shell-here))))
+  (my/open-or-create-workspace #'(lambda () (eshell-here))))
 
 (defun my/dired-in-workspace ()
   (interactive)
@@ -587,7 +602,8 @@
                            :regexp "^\* ")))
                        (org-agenda-prefix-format "%i %s")
                        (org-agenda-files '(,(concat org-directory "inbox.org")
-                                           ,(concat org-directory "inbox-phone.org"))))))))
+                                           ,(concat org-directory "inbox-phone.org")
+                                           ,(concat org-directory "inbox-calendar-perso.org"))))))))
 
 (map!
  :leader
@@ -604,11 +620,11 @@
                          (org-deadline-warning-days 0)
                          (org-agenda-repeating-timestamp-show-all t)
                          (org-agenda-include-deadlines t)))
-                (tags-todo "-MAYBE/PIN"
+                (tags-todo "-MAYBE-WAIT/PIN"
                            ((org-agenda-overriding-header "Current picks")
                             (org-agenda-prefix-format "%i %s")
                             (org-agenda-skip-function 'my/skip-not-current-filter)))
-                (tags-todo "-MAYBE+SCHEDULED={^$}/NEXT"
+                (tags-todo "-MAYBE-WAIT+SCHEDULED={^$}/NEXT"
                            ((org-agenda-overriding-header (concat "Today candidates (" (string-remove-prefix "f_"  my/current-filter) ")"))
                             (org-agenda-prefix-format "%i %s")
                             (org-agenda-skip-function 'my/skip-not-current-filter)
@@ -633,7 +649,7 @@
                                                  "----------------"))
                          (org-agenda-prefix-format "%i %s")
                          (org-agenda-include-deadlines nil)))
-                (tags-todo "-MAYBE/PIN"
+                (tags-todo "-MAYBE-WAIT/PIN"
                            ((org-agenda-overriding-header "Picked for today")
                             (org-agenda-prefix-format "%i %s")))
                 (tags-todo "TODO={^.*$}"
@@ -641,7 +657,7 @@
                             (org-agenda-prefix-format "%i %s")
                             (org-agenda-files '(,(concat org-directory "inbox.org")
                                                 ,(concat org-directory "inbox-phone.org")))))
-                (tags-todo "-MAYBE+SCHEDULED={^$}/NEXT"
+                (tags-todo "-MAYBE-WAIT+SCHEDULED={^$}/NEXT"
                            ((org-agenda-overriding-header (concat "Current Context (" (string-remove-prefix "f_" my/current-filter) ")"))
                             (org-agenda-prefix-format "%i %s")
                             (org-agenda-skip-function 'my/skip-not-current-filter)
@@ -817,10 +833,15 @@
  :leader
  :desc "GTD: Review the past week"
  "n0" #'(lambda () (interactive) (org-agenda nil "g0")))
-
+(after! org
+  (add-hook 'auto-save-hook 'org-save-all-org-buffers))
 (after! org-agenda
   (set-popup-rules!
-    '(("^\\*Org Agenda" :slot 1 :side right :width 40 :select t))))
+    '(("^\\*Org Agenda" :slot 1 :side right :width 40 :select t)))
+  (add-hook 'org-agenda-mode-hook
+            (lambda ()
+              (add-hook 'auto-save-hook 'org-save-all-org-buffers nil t)
+              (auto-save-mode))))
 
 ;; Subtask
 (defun my/org-add-subtask ()
