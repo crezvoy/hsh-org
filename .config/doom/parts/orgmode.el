@@ -510,13 +510,17 @@ directory to make multiple eshell windows easier."
  :localleader
  :map org-agenda-mode-map
  :desc "Term in workspace"
- "W" #'my/term-in-workspace)
+ "W" '(lambda ()
+        (interactive)
+        (my/agenda-do 'my/term-in-workspace)))
 
 (map!
  :localleader
  :map org-agenda-mode-map
  :desc "Open workspace"
- "w" #'my/dired-in-workspace)
+ "w" '(lambda ()
+        (interactive)
+        (my/agenda-do 'my/dired-in-workspace)))
 
 ;; Agendas
 
@@ -690,7 +694,6 @@ directory to make multiple eshell windows easier."
  :leader
  :desc "GTD: People"
  "n5" #'(lambda () (interactive) (org-agenda nil "g55")))
-
 
 (add-to-list 'org-agenda-custom-commands
              `("g6" "GTD: Project Grooming"
@@ -895,3 +898,9 @@ directory to make multiple eshell windows easier."
  :map org-agenda-mode-map
  :desc "Unrestrict"
  "[" #'org-agenda-remove-restriction-lock)
+
+(map!
+ :localleader
+ :map dired-mode-map
+ :desc "Attach"
+ "a" #'org-attach-dired-to-subtree)
