@@ -832,12 +832,20 @@ directory to make multiple eshell windows easier."
                             :max-gap "0:15"
                             :gap-ok-around ("4:00" "13:00" "14:00" "19:00"))))))))
 
+(defun my/org-save-almost-all-org-buffers
+  (interactive)
+  (message "Saving all Org buffers...")
+  (save-some-buffers t (lambda () (and (derived-mode-p 'org-mode) (not (derived-mode-p 'org-agenda-mode)))))
+  (when (featurep 'org-id) (org-id-locations-save))
+  (message "Saving all Org buffers... done"))
+
+
 (map!
  :leader
  :desc "GTD: Review the past week"
  "n0" #'(lambda () (interactive) (org-agenda nil "g0")))
 (after! org
-  (add-hook 'auto-save-hook 'org-save-all-org-buffers))
+  (add-hook 'auto-save-hook 'my/org-save-almost-all-org-buffers))
 (after! org-agenda
   (set-popup-rules!
     '(("^\\*Org Agenda" :slot 1 :side right :width 40 :select t)))
