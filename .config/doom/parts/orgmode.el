@@ -1,26 +1,30 @@
+(use-package! org-bullets
+  :init (add-hook 'org-mode-hook (lambda () (org-bullets-mode 1))))
+
 (setq org-caldav-calendars (list)
       plstore-cache-passphrase-for-symmetric-encryption t)
 
 (defun my/agenda-do (x)
   (interactive)
-  (org-agenda-check-no-diary)
-  (let* ((completion-ignore-case t)
-         (hdmarker (or (org-get-at-bol 'org-hd-marker)
+  (org-agenda-check-no-diary
+    (let* ((marker (or (org-get-at-eol 'org-marker 1)
                        (org-agenda-error)))
-         (buffer (marker-buffer hdmarker))
-         (pos (marker-position hdmarker))
-         (inhibit-read-only t)
-         newhead)
-    (org-with-remote-undo buffer
-      (with-current-buffer buffer
-        (widen)
-        (goto-char pos)
-        (org-show-context 'agenda)
-        (call-interactively x)
-        (org-save-all-org-buffers)))
-    (when (get-buffer "*Org Agenda*")
-      (with-current-buffer "*Org Agenda*"
-        (org-agenda-redo-all)))))
+           (buffer (marker-buffer marker))
+           (pos (marker-position marker))
+           (inhibit-read-only t)
+           newhead)
+     (org-with-remote-undo buffer
+       (with-current-buffer buffer
+         (widen)
+         (goto-char pos)
+         (org-show-context 'agenda)
+         (call-interactively x)
+         (end-of-line 1)
+         (setq newhead (org-get-heading))))
+     (org-agenda-change-all-lines newhead marker)
+     (beginning-of-line 1)
+     (when (get-buffer "*Org Agenda*")
+         (org-agenda-redo-all 0)))))
 
 (defun my/is-refile-target-p ()
   (let ((cat (org-entry-get (point) "CATEGORY" nil))
@@ -72,7 +76,17 @@
       org-enforce-todo-checkbox-dependencies t
       org-enforce-todo-dependencies t
       org-habit-show-habits t
+      org-hide-emphasis-markers t
+      org-hide-leading-stars t
+      org-duration-units `(("min" . 1)
+                           ("h"   . 60)
+                           ("d"   . ,(* 8 60))
+                           ("w"   . ,(* 8 60 5))
+                           ("m"   . ,(* 8 60 5 20))
+                           ("y"   . ,(* 8 60 5 20 11)))
       org-todo-repeat-to-state "NEXT")
+
+(add-hook 'org-cycle-hook '(lambda (state) (unless (eq state 'all) (org-hide-drawer-all))))
 
 (after! org
   (setq org-attach-method 'mv
@@ -306,7 +320,7 @@
 
 (map!
  :leader
- :desc "Set filter"
+ :desc "Set assignee"
  "n@" #'my/select-people)
 
 (defun my/toggle-delegate ()
@@ -448,49 +462,109 @@
         (my/agenda-do 'my/set-kind-or-category)))
 
 ;; Workspaces
+(setq my/workspace-template-dir "~/Templates")
+
+(defun my/workspace-template-path (name)
+  (concat my/workspace-template-dir "/" name))
+
+(defun my/workspace-template-list ()
+    (seq-filter (lambda (e)
+                  (and (not (string-prefix-p "." e)) (f-directory-p (my/workspace-template-path e))))
+                (directory-files my/workspace-template-dir)))
+
+(defun my/workspace-create-from-template (dest)
+  (interactive)
+  (let* ((template-name (ivy-completing-read "From template: " (my/workspace-template-list))))
+     (progn
+       (message "in create")
+       (copy-directory (my/workspace-template-path template-name) dest))))
+
+
 (defun my/open-or-create-workspace (action)
   (interactive)
   (let* ((property-name "WORKSPACE")
          (heading-comps (org-heading-components))
          (heading (nth 4 heading-comps))
+         (new-name (replace-regexp-in-string "[ ,:/|?]" "-" heading))
          (workspace-subdir (org-entry-get (point) property-name t))
          (defdir (concat (file-name-as-directory my/workspace-root)
                          (if (null workspace-subdir)
                              (progn
-                               (org-set-property property-name
-                                                 (replace-regexp-in-string "[ ,:/|?]" "-" heading))
+                               (org-set-property property-name new-name)
                                (org-entry-get (point) property-name nil))
                            workspace-subdir))))
     (progn
-      (if (not(file-exists-p defdir))
-          (make-directory defdir t))
+      (message (concat "defdir: " defdir))
+      (if (not (file-exists-p defdir))
+        (my/workspace-create-from-template defdir))
       (split-window-sensibly)
       (let ((default-directory defdir))
         (funcall action)))))
 
-(defun eshell-here ()
-  "Opens up a new shell in the directory associated with the
-current buffer's file. The eshell is renamed to match that
-directory to make multiple eshell windows easier."
+;; (defun eshell-here ()
+;; "Opens up a new shell in the directory associated with the
+;; current buffer's file. The eshell is renamed to match that
+;; directory to make multiple eshell windows easier."
+;; (interactive
+;; (let* ((parent (if (buffer-file-name
+;; (file-name-directory (buffer-file-name)
+;; default-directory
+;; (height (/ (window-total-height) 3
+;; (name   (car (last (split-string parent "/" t)))
+;; (split-window-vertically (- height)
+;; (other-window 1
+;; (eshell "new"
+;; (rename-buffer (concat "*eshell: " name "*")
+;;
+;; (insert (concat "ls")
+;; (eshell-send-input)
+
+(defun my/vterm-kill (process event)
+  "A process sentinel. Kills PROCESS's buffer if it is live."
+  (let ((b (process-buffer process)))
+    (and (buffer-live-p b)
+         (kill-buffer b))))
+
+(defun my/vterm-run (command)
+  "Execute string COMMAND in a new vterm.
+
+Interactively, prompt for COMMAND with the current buffer's file
+name supplied. When called from Dired, supply the name of the
+file at point.
+
+Like `async-shell-command`, but run in a vterm for full terminal features.
+
+The new vterm buffer is named in the form `*foo bar.baz*`, the
+command and its arguments in earmuffs.
+
+When the command terminates, the shell remains open, but when the
+shell exits, the buffer is killed."
+  (interactive
+   (list
+    (let* ((f (cond (buffer-file-name)
+                    ((eq major-mode 'dired-mode)
+                     (dired-get-filename nil t))))
+           (filename (concat " " (shell-quote-argument (and f (file-relative-name f))))))
+      (read-shell-command "Terminal command: "
+                          (cons filename 0)
+                          (cons 'shell-command-history 1)
+                          (list filename)))))
+  (with-current-buffer (vterm (concat "*" command "*"))
+    (set-process-sentinel vterm--process #'my/vterm-kill)
+    (vterm-send-string command)
+    (vterm-send-return)))
+
+(defun my/workspace-docker ()
   (interactive)
-  (let* ((parent (if (buffer-file-name)
-                     (file-name-directory (buffer-file-name))
-                   default-directory))
-         (height (/ (window-total-height) 3))
-         (name   (car (last (split-string parent "/" t)))))
-    (split-window-vertically (- height))
-    (other-window 1)
-    (eshell "new")
-    (rename-buffer (concat "*eshell: " name "*"))
+  (my/open-or-create-workspace #'(lambda ()
+                                   (if (file-exists-p "docker_run.sh")
+                                       (my/vterm-run "./docker_run.sh")))))
 
-    (insert (concat "ls"))
-    (eshell-send-input)))
-
-(defun my/term-in-workspace ()
+(defun my/workspace-term ()
   (interactive)
-  (my/open-or-create-workspace #'(lambda () (eshell-here))))
+  (my/open-or-create-workspace #'(lambda () (vterm))))
 
-(defun my/dired-in-workspace ()
+(defun my/workspace-dired ()
   (interactive)
   (my/open-or-create-workspace #'(lambda () (dired default-directory))))
 
@@ -498,29 +572,43 @@ directory to make multiple eshell windows easier."
  :localleader
  :map org-mode-map
  :desc "Term in workspace"
- "W" #'my/term-in-workspace)
+ "T" #'my/workspace-term)
 
 (map!
  :localleader
  :map org-mode-map
  :desc "Open workspace"
- "w" #'my/dired-in-workspace)
+ "W" #'my/workspace-dired)
+
+(map!
+ :localleader
+ :map org-mode-map
+ :desc "Docker in workspace"
+ "D" #'my/workspace-docker)
 
 (map!
  :localleader
  :map org-agenda-mode-map
  :desc "Term in workspace"
- "W" '(lambda ()
+ "T" '(lambda ()
         (interactive)
-        (my/agenda-do 'my/term-in-workspace)))
+        (my/agenda-do 'my/workspace-term)))
+
+(map!
+ :localleader
+ :map org-agenda-mode-map
+ :desc "Docker in workspace"
+ "D" '(lambda ()
+        (interactive)
+        (my/agenda-do 'my/workspace-docker)))
 
 (map!
  :localleader
  :map org-agenda-mode-map
  :desc "Open workspace"
- "w" '(lambda ()
+ "W" '(lambda ()
         (interactive)
-        (my/agenda-do 'my/dired-in-workspace)))
+        (my/agenda-do 'my/workspace-dired)))
 
 ;; Agendas
 
@@ -851,7 +939,7 @@ directory to make multiple eshell windows easier."
     '(("^\\*Org Agenda" :slot 1 :side right :width 40 :select t)))
   (add-hook 'org-agenda-mode-hook
             (lambda ()
-              (add-hook 'auto-save-hook 'org-save-all-org-buffers nil t)
+              (add-hook 'auto-save-hook 'my/org-save-almost-all-org-buffers nil t)
               (auto-save-mode))))
 
 ;; Subtask
@@ -865,7 +953,7 @@ directory to make multiple eshell windows easier."
   (interactive)
   (org-agenda-check-no-diary)
   (let* ((completion-ignore-case t)
-         (marker (or (org-get-at-bol 'org-marker)
+         (marker (or (org-get-at-eol 'org-marker 1)
                      (org-agenda-error)))
          (buffer (marker-buffer marker))
          (pos (marker-position marker))
@@ -912,3 +1000,11 @@ directory to make multiple eshell windows easier."
  :map dired-mode-map
  :desc "Attach"
  "a" #'org-attach-dired-to-subtree)
+
+;; less obnoxious drawers
+(custom-set-faces
+ ;; custom-set-faces was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ '(org-drawer ((t (:inherit font-lock-comment-face)))))
